@@ -25,6 +25,7 @@ graph TD
 3. **[TagRequest](file:///Users/hude/spring/rfid%20-system/src/main/java/com/house/automation/model/TagRequest.java)**: A clean data-transfer-object representing the scan event payload:
    - `tagId`: The unique identifier read from the RFID tag.
    - `scannedBy`: The location or hardware identifier of the scanner (e.g., "Front Door", "Garage Entry").
+4. **[AutomationApplication](file:///Users/hude/spring/rfid%20-system/src/main/java/com/house/automation/AutomationApplication.java)**: The main entry point to bootstrap and run the Spring Boot application.
 
 ---
 

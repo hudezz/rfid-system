@@ -1,4 +1,4 @@
-package com.house.automation;
+package com.house.automation.model;
 
 public class TagRequest {
     private String tagId;

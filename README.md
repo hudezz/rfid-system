@@ -20,9 +20,9 @@ graph TD
 
 ### Key Components
 
-1. **[AutomationController](file:///Users/hude/spring/rfid%20-system/src/main/java/com/house/automation/AutomationController.java)**: Exposes the HTTP endpoint `/api/v1/automation/trigger` to ingest scan payloads asynchronously from network-enabled readers.
-2. **[AutomationService](file:///Users/hude/spring/rfid%20-system/src/main/java/com/house/automation/AutomationService.java)**: Defines the core interface for tag processing. You will implement your custom conditional action matching within subclasses or service handlers here.
-3. **[TagRequest](file:///Users/hude/spring/rfid%20-system/src/main/java/com/house/automation/TagRequest.java)**: A clean data-transfer-object representing the scan event payload:
+1. **[AutomationController](file:///Users/hude/spring/rfid%20-system/src/main/java/com/house/automation/controller/AutomationController.java)**: Exposes the HTTP endpoint `/api/v1/automation/trigger` to ingest scan payloads asynchronously from network-enabled readers.
+2. **[AutomationService](file:///Users/hude/spring/rfid%20-system/src/main/java/com/house/automation/service/AutomationService.java)**: Defines the core interface for tag processing. You will implement your custom conditional action matching within subclasses or service handlers here.
+3. **[TagRequest](file:///Users/hude/spring/rfid%20-system/src/main/java/com/house/automation/model/TagRequest.java)**: A clean data-transfer-object representing the scan event payload:
    - `tagId`: The unique identifier read from the RFID tag.
    - `scannedBy`: The location or hardware identifier of the scanner (e.g., "Front Door", "Garage Entry").
 
@@ -43,5 +43,5 @@ Once fully integrated, the household automation hub features a glassmorphic dash
 
 ## 🚀 Getting Started
 
-1. **Implement Logic**: Open [AutomationService](file:///Users/hude/spring/rfid%20-system/src/main/java/com/house/automation/AutomationService.java) and implement a class to execute actions based on `TagRequest` attributes.
+1. **Implement Logic**: Open [AutomationService](file:///Users/hude/spring/rfid%20-system/src/main/java/com/house/automation/service/AutomationService.java) and implement a class to execute actions based on `TagRequest` attributes.
 2. **Configure Actuators**: Add rest-template calls or MQTT integration to trigger external devices.

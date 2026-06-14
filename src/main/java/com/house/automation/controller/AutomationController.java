@@ -1,5 +1,7 @@
-package com.house.automation;
+package com.house.automation.controller;
 
+import com.house.automation.model.TagRequest;
+import com.house.automation.service.AutomationService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;

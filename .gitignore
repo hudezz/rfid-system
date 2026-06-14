@@ -1,0 +1,15 @@
+# Compiled class file
+*.class
+
+# Log files
+*.log
+
+# Blueprints
+.idea/
+*.iml
+*.iws
+
+# Gradle / Maven
+.gradle/
+/build/
+target/

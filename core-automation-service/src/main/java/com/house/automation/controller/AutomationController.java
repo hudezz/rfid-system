@@ -22,7 +22,8 @@ public class AutomationController {
 
     @PostMapping("/trigger")
     public ResponseEntity<String> trigger(@RequestBody TagRequest request) {
-        // Call the service using the injected AutomationService and return ResponseEntity.ok()
+
+        //Call the service using the injected AutomationService and return ResponseEntity.ok()
         String result =automationService.processTagTap(request);
         return ResponseEntity.ok(result);
     }

@@ -34,6 +34,13 @@ graph TD
     D -->|No Match| H[Log Fallback Event]
 ```
 
+## 📂 Multi-Module Project Structure
+
+The workspace is structured as a Maven multi-module project containing three distinct modules:
+* **[api-gateway](file:///Users/hude/spring/rfid%20-system/api-gateway)**: Built with Spring Cloud Gateway (running on port 8080) to route traffic from public endpoints to internal services.
+* **[core-automation-service](file:///Users/hude/spring/rfid%20-system/core-automation-service)**: The main automation engine (running on port 8081) that handles tag taps, implements the conditional matching engine, and logs chore completions into the H2 Database.
+* **[notification-service](file:///Users/hude/spring/rfid%20-system/notification-service)**: A skeleton Spring Boot application (running on port 8082) with endpoints ready to broadcast alerts to roommates.
+
 ---
 
 ## 🛠️ Tech Stack
@@ -56,10 +63,10 @@ Once fully integrated with a frontend client, the hub exposes real-time scan met
 
 ## 🧠 How to Implement the Logic on Your Own
 
-To write the core automation business logic without rewriting the entire framework, you will be coding inside the service layer implementation ([AutomationServiceImpl.java](file:///Users/hude/spring/rfid%20-system/src/main/java/com/house/automation/service/AutomationServiceImpl.java)). Here are the exact conceptual steps to implement the handler logic:
+To write the core automation business logic without rewriting the entire framework, you will be coding inside the service layer implementation ([AutomationServiceImpl.java](file:///Users/hude/spring/rfid%20-system/core-automation-service/src/main/java/com/house/automation/service/AutomationServiceImpl.java)). Here are the exact conceptual steps to implement the handler logic:
 
 ### 1. Data Extraction (Using Getters)
-The method receives a [TagRequest](file:///Users/hude/spring/rfid%20-system/src/main/java/com/house/automation/model/TagRequest.java) object containing request parameters.
+The method receives a [TagRequest](file:///Users/hude/spring/rfid%20-system/core-automation-service/src/main/java/com/house/automation/model/TagRequest.java) object containing request parameters.
 * Extract the unique identifier of the scanned tag (`tagId`) using the appropriate model getter.
 * Extract the name/device of the person who scanned it (`scannedBy`) using the scanned-by model getter.
 
@@ -75,7 +82,7 @@ For each matched chore block:
 
 ### 4. Feedback Loop Resolution
 * Return a clear, human-readable confirmation string (e.g. `"Good job keeping up with the laundry, Roommate A!"`) representing the response.
-* This string flows back through the [AutomationController](file:///Users/hude/spring/rfid%20-system/src/main/java/com/house/automation/controller/AutomationController.java) to the scanner/phone, providing instant feedback.
+* This string flows back through the [AutomationController](file:///Users/hude/spring/rfid%20-system/core-automation-service/src/main/java/com/house/automation/controller/AutomationController.java) to the scanner/phone, providing instant feedback.
 
 ---
 

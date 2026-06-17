@@ -34,6 +34,66 @@ graph TD
     D -->|No Match| H[Log Fallback Event]
 ```
 
+## 🔄 Architectural Evolution: Monolith vs. Microservices
+
+As our household automation needs expanded (and the chore wars intensified), we realized a single monolithic codebase was a bottleneck. Here is how the system evolved:
+
+### Before (Monolithic Architecture)
+Initially, the application was built as a single, unified monolith. 
+* **All-in-One Engine**: A single running Spring Boot server handled routing endpoints, input validation, switch/conditional tag processing, and file/database logging in one project.
+* **Bottlenecks**: If the third-party webhook API (e.g. sending a Discord or mobile alert) went down or ran slowly, it blocked the execution thread. The physical reader tap was delayed, or worse, the entire service crashed, rendering all chore logging offline.
+* **Scaling**: We couldn't update or restart the notification handlers without taking down the tag scanners.
+
+### After (Microservices Architecture)
+To solve these limitations, we refactored the monolith into a distributed, decoupled three-tier microservice architecture:
+
+```text
+                  +-----------------------------------+
+                  |      📱 iOS Shortcut / Scanner    |
+                  +-----------------+-----------------+
+                                    |
+                                    | HTTP POST (Port 8080)
+                                    v
+                  +-----------------+-----------------+
+                  |         📡 API Gateway            |
+                  |          (Port 8080)              |
+                  +-----------------+-----------------+
+                                    |
+                                    | Route /api/v1/automation/**
+                                    v
++-----------------------------------+-----------------------------------+
+|                  ⚙️ core-automation-service                        |
+|                           (Port 8081)                                 |
+|                                                                       |
+|   +-----------------------+              +-----------------------+    |
+|   |   Tag Request Router  |              |    ChoreLog Entity    |    |
+|   +-----------+-----------+              +-----------+-----------+    |
+|               |                                      |                |
+|               v                                      v                |
+|   +-----------+-----------+              +-----------+-----------+    |
+|   |  Conditional Engine   |              |    💾 H2 Database     |    |
+|   +-----------+-----------+              +-----------------------+    |
++---------------+-------------------------------------------------------+
+                |
+                | Asynchronous Event Broadcast (Port 8082)
+                v
++---------------+-------------------------------------------------------+
+|                  🔔 notification-service                              |
+|                           (Port 8082)                                 |
+|                                                                       |
+|   +-----------------------+              +-----------------------+    |
+|   | Notification Recv API | ➡️ ➡️ ➡️ ➡️    | External Webhooks     |    |
+|   +-----------------------+              +-----------------------+    |
++-----------------------------------------------------------------------+
+```
+
+### Why Migrate?
+1. **Separation of Concerns**: Each module has one distinct job. The `api-gateway` does routing, `core-automation-service` manages the chore logs, and `notification-service` is responsible for communication webhooks.
+2. **Single Responsibility**: The controller and service layer in the core module no longer worry about how notification delivery is implemented (be it APNs, Discord, or SMS). They simply delegate to the notification service.
+3. **Distributed System Stability & Fault Isolation**: If the external push notification provider is down, the `notification-service` will log the error on port `8082`, but the `core-automation-service` on port `8081` remains fully operational. Chore entries continue to be written to H2, and physical tags remain responsive.
+
+---
+
 ## 📂 Multi-Module Project Structure
 
 The workspace is structured as a Maven multi-module project containing three distinct modules:

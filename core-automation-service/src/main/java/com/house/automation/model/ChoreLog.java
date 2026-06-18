@@ -15,15 +15,22 @@ public class ChoreLog {
 
     private String tagId;
     private String scannedBy;
-    private LocalDateTime timestamp;
+    private LocalDateTime timeStamp;
 
     public ChoreLog() {
     }
 
-    public ChoreLog(String tagId, String scannedBy, LocalDateTime timestamp) {
+    public ChoreLog(String tagId, String scannedBy, LocalDateTime timeStamp) {
         this.tagId = tagId;
         this.scannedBy = scannedBy;
-        this.timestamp = timestamp;
+        this.timeStamp = timeStamp;
+    }
+
+    public ChoreLog(Long id, String tagId, String scannedBy, LocalDateTime timeStamp) {
+        this.id = id;
+        this.tagId = tagId;
+        this.scannedBy = scannedBy;
+        this.timeStamp = timeStamp;
     }
 
     public Long getId() {
@@ -50,11 +57,11 @@ public class ChoreLog {
         this.scannedBy = scannedBy;
     }
 
-    public LocalDateTime getTimestamp() {
-        return timestamp;
+    public LocalDateTime getTimeStamp() {
+        return timeStamp;
     }
 
-    public void setTimestamp(LocalDateTime timestamp) {
-        this.timestamp = timestamp;
+    public void setTimeStamp(LocalDateTime timeStamp) {
+        this.timeStamp = timeStamp;
     }
 }

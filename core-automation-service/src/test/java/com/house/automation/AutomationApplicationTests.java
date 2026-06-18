@@ -38,4 +38,37 @@ AutomationApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(content().string("Tag detected, but no rules are coded for test-tag-id yet!"));
     }
+
+    @Test
+    void testWashingMachineTag() throws Exception {
+        TagRequest request = new TagRequest("washingmachine-tag", "Roommate1");
+
+        mockMvc.perform(post("/api/v1/automation/trigger")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(content().string("Good job keeping up with the laundry, Roommate1!"));
+    }
+
+    @Test
+    void testCatsFedTag() throws Exception {
+        TagRequest request = new TagRequest("CatsFedandLittercleaned-tag", "Roommate2");
+
+        mockMvc.perform(post("/api/v1/automation/trigger")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(content().string("Good boy, keep feeding the cats! Miau miau, Roommate2"));
+    }
+
+    @Test
+    void testTrashOutTag() throws Exception {
+        TagRequest request = new TagRequest("trashOut-tag", "Roommate3");
+
+        mockMvc.perform(post("/api/v1/automation/trigger")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(content().string("Good boy, keeping the garbage out, Roommate3!"));
+    }
 }

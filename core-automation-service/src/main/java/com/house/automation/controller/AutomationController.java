@@ -14,17 +14,14 @@ public class AutomationController {
 
     private final AutomationService automationService;
 
-    // Verify constructor injection for AutomationService
+    // Constructor injection for AutomationService
     public AutomationController(AutomationService automationService) {
-
         this.automationService = automationService;
     }
 
     @PostMapping("/trigger")
     public ResponseEntity<String> trigger(@RequestBody TagRequest request) {
-
-        //Call the service using the injected AutomationService and return ResponseEntity.ok()
-        String result =automationService.processTagTap(request);
+        String result = automationService.processTagTap(request);
         return ResponseEntity.ok(result);
     }
 }

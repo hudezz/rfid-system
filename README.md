@@ -45,7 +45,7 @@ Initially, the application was built as a single, unified monolith.
 * **Scaling**: We couldn't update or restart the notification handlers without taking down the tag scanners.
 
 ### After (Microservices Architecture)
-To solve these limitations, we refactored the monolith into a distributed, decoupled three-tier microservice architecture:
+To solve these limitations, we refactored the monolith into a distributed, decoupled microservice architecture:
 
 ```text
                   +-----------------------------------+
@@ -73,37 +73,26 @@ To solve these limitations, we refactored the monolith into a distributed, decou
 |   +-----------+-----------+              +-----------+-----------+    |
 |   |  Conditional Engine   |              |    💾 H2 Database     |    |
 |   +-----------+-----------+              +-----------------------+    |
-+---------------+-------------------------------------------------------+
-                |
-                | Asynchronous Event Broadcast (Port 8082)
-                v
-+---------------+-------------------------------------------------------+
-|                  🔔 notification-service                              |
-|                           (Port 8082)                                 |
-|                                                                       |
-|   +-----------------------+              +-----------------------+    |
-|   | Notification Recv API | ➡️ ➡️ ➡️ ➡️    | External Webhooks     |    |
-|   +-----------------------+              +-----------------------+    |
 +-----------------------------------------------------------------------+
 ```
 
 ### Why Migrate?
-1. **Separation of Concerns**: Each module has one distinct job. The `api-gateway` does routing, `core-automation-service` manages the chore logs, and `notification-service` is responsible for communication webhooks.
-2. **Single Responsibility**: The controller and service layer in the core module no longer worry about how notification delivery is implemented (be it APNs, Discord, or SMS). They simply delegate to the notification service.
-3. **Distributed System Stability & Fault Isolation**: If the external push notification provider is down, the `notification-service` will log the error on port `8082`, but the `core-automation-service` on port `8081` remains fully operational. Chore entries continue to be written to H2, and physical tags remain responsive.
+1. **Separation of Concerns**: Each module has one distinct job. The `api-gateway` does routing, while the `core-automation-service` manages the chore logs and database operations.
+2. **Single Responsibility**: The core automation module focus is entirely on processing tag inputs and persisting log details.
+3. **Decoupled Gateway Routing**: Scanners interact exclusively with the gateway, meaning the core database and processing logic remain hidden behind port `8080`.
 
 ---
 
 ## 📂 Multi-Module Project Structure
 
-The workspace is structured as a Maven multi-module project containing three distinct modules:
+The workspace is structured as a Maven multi-module project containing active modules:
 * **[api-gateway](file:///Users/hude/spring/rfid%20-system/api-gateway)**: Built with Spring Cloud Gateway (running on port 8080) to route traffic from public endpoints to internal services.
 * **[core-automation-service](file:///Users/hude/spring/rfid%20-system/core-automation-service)**: The main automation engine (running on port 8081) that handles tag taps, implements the conditional matching engine, and logs chore completions into the H2 Database.
-* **[notification-service](file:///Users/hude/spring/rfid%20-system/notification-service)**: A skeleton Spring Boot application (running on port 8082) with endpoints ready to broadcast alerts to roommates.
+* **`notification-service` (Decommissioned)**: Previously ran on port 8082; now decommissioned and removed from the active parent build reactor (`pom.xml`) to run as a database-only chore logger.
 
 ### System Communication Flow
 
-To optimize network latency and handle external integration failures without breaking the core chore tracker, the system decouples client communication from notification broadcasts:
+To optimize network latency and handle chore completions instantly:
 
 ```mermaid
 sequenceDiagram
@@ -111,23 +100,17 @@ sequenceDiagram
     participant Gateway as 📡 api-gateway (Port 8080)
     participant Core as ⚙️ core-automation-service (Port 8081)
     participant DB as 💾 H2 Database
-    participant Notif as 🔔 notification-service (Port 8082)
 
     Tap->>Gateway: POST /api/v1/automation/trigger (JSON Payload)
     Gateway->>Core: Forward request to Port 8081
     Core->>DB: Persist ChoreLog entity
     Core-->>Gateway: HTTP 200 OK (Response: "Good job keeping up with the laundry!")
     Gateway-->>Tap: Complete (Instant feedback in milliseconds)
-    
-    Note over Core, Notif: Asynchronous Offloaded Trigger
-    Core-xNotif: POST /api/v1/notifications (Chore Event Data)
-    Notif->>Notif: Format and broadcast webhook alert to roommates
 ```
 
-#### Separation of Concerns & Asynchronous Execution
-* **API Gateway Routing**: Acting as a single entry point, the gateway handles routing rules. Physical scanners and mobile shortcuts only target port `8080`, shielding internal ports (`8081`, `8082`) and allowing centralized features like security checks, CORS headers, or rate-limiting.
-* **Asynchronous Webhook Offloading**: Sending mobile push notifications, email, or third-party webhooks (e.g. Pushover, Discord, Slack) involves network calls to external servers that can be slow or fail. To keep the tap response time in milliseconds, the `core-automation-service` writes the event to H2, immediately returns a success status back to the client device, and fires off the notification request to the `notification-service` on port `8082` asynchronously.
-* **Fault Isolation**: If the notification service experiences downtime, the core system continues logging chore completions without crashing.
+#### Separation of Concerns & Fast Processing
+* **API Gateway Routing**: Acting as a single entry point, the gateway handles routing rules. Physical scanners and mobile shortcuts only target port `8080`, shielding internal ports (`8081`) and allowing centralized features like security checks, CORS headers, or rate-limiting.
+* **Direct Database Persistence**: The `core-automation-service` immediately writes the event to the in-memory H2 database, returning a success status back to the client device, keeping request resolution times to mere milliseconds.
 
 ---
 

@@ -21,15 +21,17 @@ We stuck NFC cards directly onto the washing machine, the cat food container, an
 
 ## 🏗️ System Architecture
 
-The workflow is simple: your client device (like an iPhone or esp32 scanner) detects a tag scan and pushes a POST request to our API endpoint.
+The workflow is simple: your client device (like an iPhone or esp32 scanner) detects a tag scan and pushes a POST request to our API endpoint. The backend uses Redis to debounce rapid duplicate taps (cooldown window) before running the chore matching logic.
 
 ```mermaid
 graph TD
     A[Physical NFC Tag Tap] -->|iPhone Automation POST| B[AutomationController]
     B -->|processTagTap| C[AutomationService]
-    C -->|Conditional Logic| D{Chore Matcher}
+    C -->|Check Cooldown| R{Redis Cooldown Active?}
+    R -->|Yes| I[Ignore Tap / Return Cooldown Response]
+    R -->|No| D{Chore Matcher}
     D -->|Match: washingmachine-tag| E[Print Log & Clear Laundry Alert]
-    D -->|Match: CatsFed-tag| F[Log Feed Time & Reset Cat Food Alarm]
+    D -->|Match: CatsFedandLittercleaned-tag| F[Log Feed Time & Reset Cat Food Alarm]
     D -->|Match: trashOut-tag| G[Log Trash Run & Notify Roommates]
     D -->|No Match| H[Log Fallback Event]
 ```
@@ -44,8 +46,8 @@ Initially, the application was built as a single, unified monolith.
 * **Bottlenecks**: If the third-party webhook API (e.g. sending a Discord or mobile alert) went down or ran slowly, it blocked the execution thread. The physical reader tap was delayed, or worse, the entire service crashed, rendering all chore logging offline.
 * **Scaling**: We couldn't update or restart the notification handlers without taking down the tag scanners.
 
-### After (Microservices Architecture)
-To solve these limitations, we refactored the monolith into a distributed, decoupled microservice architecture:
+### After (Microservices Architecture with Redis)
+To solve these limitations, we refactored the monolith into a distributed, decoupled microservice architecture, and integrated Redis to handle transient status caching and tag cooldown logic:
 
 ```text
                   +-----------------------------------+
@@ -72,14 +74,24 @@ To solve these limitations, we refactored the monolith into a distributed, decou
 |               v                                      v                |
 |   +-----------+-----------+              +-----------+-----------+    |
 |   |  Conditional Engine   |              |    💾 H2 Database     |    |
-|   +-----------+-----------+              +-----------------------+    |
-+-----------------------------------------------------------------------+
+|   +-----+-----------+-----+              +-----------------------+    |
+|         |           ^                                                 |
++---------|-----------|-------------------------------------------------+
+          |           |
+          | Check     | Return Cooldown
+          | Cooldown  | Status
+          v           |
++---------------------+-----------------+
+|             🔴 Redis                  |
+|           (Port 6379)                 |
++---------------------------------------+
 ```
 
 ### Why Migrate?
 1. **Separation of Concerns**: Each module has one distinct job. The `api-gateway` does routing, while the `core-automation-service` manages the chore logs and database operations.
 2. **Single Responsibility**: The core automation module focus is entirely on processing tag inputs and persisting log details.
 3. **Decoupled Gateway Routing**: Scanners interact exclusively with the gateway, meaning the core database and processing logic remain hidden behind port `8080`.
+4. **Transient State & De-duplication (Redis)**: Integrating Redis allows us to enforce a "tap cooldown" (de-duplication/debounce) window. Physical NFC readers can trigger multiple requests during a single scan. By keeping track of active tag scans in Redis with short-lived TTLs, we prevent duplicate chore logs from hitting our persistent H2 database.
 
 ---
 
@@ -99,18 +111,30 @@ sequenceDiagram
     participant Tap as 📱 iPhone Tap / NFC Scanner
     participant Gateway as 📡 api-gateway (Port 8080)
     participant Core as ⚙️ core-automation-service (Port 8081)
+    participant Redis as 🔴 Redis (Port 6379)
     participant DB as 💾 H2 Database
 
     Tap->>Gateway: POST /api/v1/automation/trigger (JSON Payload)
     Gateway->>Core: Forward request to Port 8081
-    Core->>DB: Persist ChoreLog entity
-    Core-->>Gateway: HTTP 200 OK (Response: "Good job keeping up with the laundry!")
-    Gateway-->>Tap: Complete (Instant feedback in milliseconds)
+    
+    Core->>Redis: Check cooldown key (cooldown:tag:{tagId})
+    alt Cooldown Active (Duplicate tap)
+        Redis-->>Core: Key exists (True)
+        Core-->>Gateway: HTTP 200 OK ("Tag tap ignored (cooldown active)")
+        Gateway-->>Tap: Complete (Prompt feedback, no DB write)
+    else Cooldown Inactive (New tap)
+        Redis-->>Core: Key does not exist (False)
+        Core->>Redis: Set key with TTL (cooldown:tag:{tagId} = true, TTL 5s)
+        Core->>DB: Persist ChoreLog entity
+        Core-->>Gateway: HTTP 200 OK (Response: "Good job keeping up with the laundry!")
+        Gateway-->>Tap: Complete (Instant feedback in milliseconds)
+    end
 ```
 
 #### Separation of Concerns & Fast Processing
 * **API Gateway Routing**: Acting as a single entry point, the gateway handles routing rules. Physical scanners and mobile shortcuts only target port `8080`, shielding internal ports (`8081`) and allowing centralized features like security checks, CORS headers, or rate-limiting.
-* **Direct Database Persistence**: The `core-automation-service` immediately writes the event to the in-memory H2 database, returning a success status back to the client device, keeping request resolution times to mere milliseconds.
+* **NFC Debounce & Cooldown Check via Redis**: Before making a persistent database write, `core-automation-service` checks Redis to see if a tag cooldown is active. Redis serves as an extremely fast, low-latency in-memory cache to catch duplicate physical taps.
+* **Direct Database Persistence**: If the tap is valid (not debounced), the `core-automation-service` writes the event to the in-memory H2 database and returns a success status back to the client device, keeping request resolution times extremely fast.
 
 ---
 
@@ -118,8 +142,11 @@ sequenceDiagram
 
 * **Language**: Java 21 (OpenJDK)
 * **Framework**: Spring Boot (v3.2.5)
-* **Web Services**: Spring Web (MVC)
-* **Data Layer**: Spring Data JPA with H2 (In-Memory Database)
+* **Web Services**: Spring Web (MVC), Spring Cloud Gateway
+* **Data Layer**: 
+  * Spring Data JPA with H2 (In-Memory Database)
+  * Spring Data Redis (Cooldown caching & de-duplication)
+* **Infrastructure**: Redis (Port 6379)
 * **Mobile Client**: iOS Personal Automations (Shortcuts)
 
 ---
@@ -141,17 +168,25 @@ The method receives a [TagRequest](file:///Users/hude/spring/rfid%20-system/core
 * Extract the unique identifier of the scanned tag (`tagId`) using the appropriate model getter.
 * Extract the name/device of the person who scanned it (`scannedBy`) using the scanned-by model getter.
 
-### 2. The Conditional Engine
+### 2. Cooldown Window Check (Redis Integration)
+To prevent accidental double-taps:
+* Connect the Spring Boot backend to Redis using `StringRedisTemplate`.
+* Check if a lock key (e.g., `"cooldown:tag:" + tagId`) exists in Redis.
+* If the key **exists**, immediately return a cooldown message response (e.g., `"Cooldown active. Please wait before scanning again!"`).
+* If the key **does not exist**, set the key in Redis with a value (like `"true"`) and set a short time-to-live expiration (e.g., 5 seconds).
+
+### 3. The Conditional Engine
 Create a comparison branch using conditional blocks (`if-else` or `switch` statements):
 * Compare the extracted `tagId` against your set of known physical card IDs (e.g. `"washingmachine-tag"`, `"trashOut-tag"`, or `"CatsFedandLittercleaned-tag"`).
 * **Security & Cleanliness Tip**: Always use safe string comparison (`"known-tag-id".equals(tagId)`) to avoid null pointer exceptions in case the scanned tag ID is null.
 
-### 3. Event Logging (Console & Diagnostics)
+### 4. Event Logging & Persistent Storage
 For each matched chore block:
 * Construct a log message printing who swiped which tag (e.g. `[LOG] Roommate A swiped the WASHING MACHINE TAG!`).
 * Use `System.out.println` or standard Spring logging (`org.slf4j.Logger`) to print the message.
+* Instantiate a `ChoreLog` and call `choreLogRepository.save(choreLog)` to persist it to the database.
 
-### 4. Feedback Loop Resolution
+### 5. Feedback Loop Resolution
 * Return a clear, human-readable confirmation string (e.g. `"Good job keeping up with the laundry, Roommate A!"`) representing the response.
 * This string flows back through the [AutomationController](file:///Users/hude/spring/rfid%20-system/core-automation-service/src/main/java/com/house/automation/controller/AutomationController.java) to the scanner/phone, providing instant feedback.
 
